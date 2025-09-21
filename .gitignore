@@ -12,3 +12,4 @@ ansible/terraform-outputs.json
 
 # OS files
 .DS_Store
+./idea
