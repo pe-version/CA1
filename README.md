@@ -314,6 +314,20 @@ This project structure supports integration with CI/CD pipelines:
 - Health checks for deployment validation
 - Automated testing framework ready
 
+## Known Limitations
+
+### Terraform State Management
+This implementation uses local Terraform state due to AWS IAM permission restrictions in the educational environment. In a production deployment, the following S3 backend configuration would be recommended:
+```hcl
+terraform {
+  backend "s3" {
+    bucket = "your-terraform-state-bucket"
+    key    = "ca1/terraform.tfstate"
+    region = "us-east-2"
+  }
+}
+```
+
 ## License
 
 This project is for educational purposes as part of CS 5287 coursework.
