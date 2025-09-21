@@ -1,0 +1,14 @@
+#Terraform
+terraform.tfstate*
+terraform.tfvars
+.terraform/
+*.tfplan
+
+# SSH Keys
+*.pem
+
+# Ansible outputs
+ansible/terraform-outputs.json
+
+# OS files
+.DS_Store

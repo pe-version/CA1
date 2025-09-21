@@ -1,0 +1,174 @@
+---
+# Install Docker on all VMs
+- name: Install Docker everywhere
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+    
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+    
+    - name: Start Docker service
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+    
+    - name: Add user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+    
+    - name: Reset connection for docker group
+      meta: reset_connection
+
+# Deploy Kafka and Zookeeper
+- name: Deploy Kafka
+  hosts: kafka
+  tasks:
+    - name: Start Zookeeper container
+      docker_container:
+        name: zookeeper
+        image: confluentinc/cp-zookeeper:7.4.0
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "2181:2181"
+        env:
+          ZOOKEEPER_CLIENT_PORT: "2181"
+          ZOOKEEPER_TICK_TIME: "2000"
+    
+    - name: Wait for Zookeeper to start
+      wait_for:
+        port: 2181
+        delay: 30
+    
+    - name: Start Kafka container
+      docker_container:
+        name: kafka
+        image: confluentinc/cp-kafka:7.4.0
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "9092:9092"
+        env:
+          KAFKA_BROKER_ID: "1"
+          KAFKA_ZOOKEEPER_CONNECT: "localhost:2181"
+          KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092,PLAINTEXT_HOST://{{ private_ip }}:9092"
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+          KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    
+    - name: Wait for Kafka to start
+      wait_for:
+        port: 9092
+        delay: 45
+    
+    - name: Create metals-prices topic
+      shell: |
+        docker exec kafka kafka-topics --create \
+          --topic metals-prices \
+          --bootstrap-server localhost:9092 \
+          --partitions 3 \
+          --replication-factor 1
+      ignore_errors: yes
+
+# Deploy MongoDB
+- name: Deploy MongoDB
+  hosts: database
+  tasks:
+    - name: Start MongoDB container
+      docker_container:
+        name: mongodb
+        image: mongo:6.0
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "27017:27017"
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: password123
+        volumes:
+          - mongodb_data:/data/db
+    
+    - name: Wait for MongoDB to start
+      wait_for:
+        port: 27017
+        delay: 20
+
+# Deploy Processor Application
+- name: Deploy Processor
+  hosts: processor
+  tasks:
+    - name: Copy processor code
+      copy:
+        src: processor/
+        dest: /home/ubuntu/processor/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+    
+    - name: Build processor image
+      docker_image:
+        name: metals-processor
+        build:
+          path: /home/ubuntu/processor
+        source: build
+    
+    - name: Start processor container
+      docker_container:
+        name: metals-processor
+        image: metals-processor:latest
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "8001:8001"
+        env:
+          KAFKA_BOOTSTRAP_SERVERS: "{{ hostvars['kafka-vm']['private_ip'] }}:9092"
+          KAFKA_TOPIC: "metals-prices"
+          KAFKA_GROUP_ID: "metals-processor-group"
+          MONGODB_URI: "mongodb://admin:password123@{{ hostvars['mongodb-vm']['private_ip'] }}:27017/metals?authSource=admin"
+          MONGODB_DATABASE: "metals"
+          MONGODB_COLLECTION: "prices"
+          LOG_LEVEL: "INFO"
+
+# Deploy Producer Application
+- name: Deploy Producer
+  hosts: producer
+  tasks:
+    - name: Copy producer code
+      copy:
+        src: producer/
+        dest: /home/ubuntu/producer/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+    
+    - name: Build producer image
+      docker_image:
+        name: metals-producer
+        build:
+          path: /home/ubuntu/producer
+        source: build
+    
+    - name: Start producer container
+      docker_container:
+        name: metals-producer
+        image: metals-producer:latest
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "8000:8000"
+        env:
+          KAFKA_BOOTSTRAP_SERVERS: "{{ hostvars['kafka-vm']['private_ip'] }}:9092"
+          KAFKA_TOPIC: "metals-prices"
+          API_KEY: ""
+          FETCH_INTERVAL: "60"
+          LOG_LEVEL: "INFO"
