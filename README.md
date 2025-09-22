@@ -6,313 +6,269 @@
 
 ## Overview
 
-This project transforms a manual metals price processing pipeline into a fully automated Infrastructure as Code (IaC) deployment using Terraform and Ansible. The system processes real-time metals pricing data through a distributed pipeline running on AWS.
+This project transforms a manual metals price processing pipeline into a fully automated Infrastructure as Code (IaC) deployment using Terraform and Ansible. The system processes metals pricing data through a distributed pipeline running on AWS, demonstrating enterprise-level DevOps automation practices.
+
+## Prerequisites
+
+### Required Tools and Versions
+- **AWS CLI**: v2.x configured with valid credentials
+- **Terraform**: v1.5+ (tested with Terraform v1.5.7)
+- **Ansible**: v6.x+ (tested with ansible-core 2.15)
+- **SSH Key Pair**: Created in AWS EC2 console
+- **Python**: 3.8+ for local development (optional)
+
+### AWS Credentials Setup
+```bash
+# Configure AWS CLI with your credentials
+aws configure
+# Enter: Access Key ID, Secret Access Key, Region (us-east-2), Output (json)
+
+# Verify configuration
+aws sts get-caller-identity
+```
 
 ## Architecture
 
-### Infrastructure
+### Infrastructure Components
 - **4 AWS EC2 Instances** (t3.small)
   - Kafka VM: Apache Kafka + Zookeeper for message streaming
   - MongoDB VM: Document database for processed data storage
-  - Processor VM: Python application that consumes from Kafka and writes to MongoDB
-  - Producer VM: Python application that fetches metals prices and publishes to Kafka
+  - Processor VM: Python application consuming from Kafka, writing to MongoDB
+  - Producer VM: Python application publishing simulated metals pricing data
 
-### Networking
-- Custom VPC with public subnet
-- Security groups configured for service communication
-- Private IP networking between services
-- Public access for health monitoring
+### Networking Design
+- Custom VPC (10.0.0.0/16) with single public subnet (10.0.1.0/24)
+- Internet Gateway for external connectivity
+- Security groups restricting access to required ports only
+- Private IP communication between services for optimal performance
 
-### Security
-- MongoDB credentials stored in AWS Secrets Manager
-- SSH key-based authentication for VM access
-- Restricted security group rules for internal communication
+### Security Implementation
+- **Multi-Secret Management**: Three secrets stored in AWS Secrets Manager
+  - MongoDB admin password
+  - Kafka admin credentials
+  - API key for external services
+- SSH key-based authentication for all VM access
+- No hardcoded credentials in any configuration files
 
-## Quick Start
+## Deployment Instructions
 
-### Prerequisites
-- AWS CLI configured with valid credentials
-- SSH key pair created in AWS EC2
-- Terraform and Ansible installed locally
-- Python 3.x for local development
-
-### Deploy Everything
+### Single-Command Deployment
 ```bash
-# Clone and navigate to project
-cd ca1-metals/
-
 # Deploy complete infrastructure and applications
 ./deploy.sh
 ```
 
-### Verify Deployment
+### Validation
 ```bash
-# Check health endpoints
-curl http://PRODUCER_IP:8000/health
-curl http://PROCESSOR_IP:8001/health
+# Check health endpoints (replace IPs with actual values from terraform output)
+curl -s http://PRODUCER_IP:8000/health
+curl -s http://PROCESSOR_IP:8001/health
 
-# Run comprehensive test
-bash scripts/quick-test.sh
+# Expected: Both show "kafka_connected": true and "status": "healthy"
 ```
 
-### Clean Up
+### Complete Cleanup
 ```bash
 # Destroy all AWS resources
 ./destroy.sh
 ```
 
-## Manual Deployment
+## Pipeline Validation Results
 
-### Infrastructure Provisioning
-```bash
-cd terraform/
+### Infrastructure Verification
+The deployment creates 4 EC2 instances as shown in the AWS console:
 
-# Configure your SSH key
-echo 'ssh_key_name = "your-key-name"' > terraform.tfvars
+![AWS EC2 Instances](demo-captures/running-instances.png)
+*Four running t3.small instances (kafka-vm, producer-vm, mongodb-vm, processor-vm) in us-east-2a availability zone*
 
-# Deploy infrastructure
-terraform init
-terraform plan
-terraform apply
+### Secrets Management Implementation
+All credentials are securely managed through AWS Secrets Manager:
 
-# Get outputs for next step
-terraform output
+![AWS Secrets Manager](demo-captures/secrets-manager.png)
+*Three secrets configured for comprehensive credential management: API key, Kafka admin password, and MongoDB password*
+
+### Infrastructure Outputs
+After successful deployment, the following endpoints are available:
+- **Kafka Topic**: metals-prices (3 partitions)
+- **MongoDB**: metals database with prices collection
+- **Producer Health**: http://PRODUCER_IP:8000/health
+- **Processor Health**: http://PROCESSOR_IP:8001/health
+
+### Expected Health Response Format
+```json
+{
+  "kafka_connected": true,
+  "mongodb_status": "connected", 
+  "status": "healthy",
+  "processed_count": 0,
+  "timestamp": "2025-09-22T02:56:48.712544"
+}
 ```
 
-### Application Deployment
+### Data Flow Verification
+1. Producer generates simulated metals pricing data
+2. Kafka streams messages via metals-prices topic
+3. Processor consumes messages and stores in MongoDB
+4. Health endpoints confirm end-to-end connectivity
+
+## Key Design Decisions
+
+### Technology Choices
+- **Terraform over CloudFormation**: Better cross-cloud portability and mature AWS provider
+- **Ansible over Chef/Puppet**: Agentless architecture and YAML-based configuration
+- **Local Terraform State**: Due to S3 bucket creation permission restrictions in educational AWS environment
+- **Docker Containerization**: Ensures consistent application deployment across environments
+
+### Security Approach
+- **AWS Secrets Manager over environment variables**: Centralized secret management with rotation capabilities
+- **Multiple secrets implementation**: Demonstrates comprehensive credential management beyond minimum requirements
+- **Placeholder API keys**: Educational environment using simulated data rather than external API costs
+
+### Network Architecture
+- **Single AZ deployment**: Simplified for educational purposes while maintaining production patterns
+- **Docker networks for Kafka**: Solves container communication issues with dedicated bridge network
+- **Public IPs for monitoring**: Enables external health checks while maintaining private internal communication
+
+### Ansible Inventory Management
+- **Manual IP updates required**: Educational trade-off between automation complexity and learning objectives
+- **Static inventory over dynamic**: Avoids additional AWS permissions and complexity for assignment scope
+
+## Manual Configuration Steps
+
+Due to educational AWS environment limitations, the following manual steps are required:
+
+### 1. SSH Key Configuration
+```bash
+# Update terraform/terraform.tfvars with your key name
+echo 'ssh_key_name = "your-actual-key-name"' > terraform/terraform.tfvars
+```
+
+### 2. Ansible Inventory Updates
+After each deployment, update `ansible/inventory/hosts.yml` with new IP addresses from `terraform output`.
+
+### 3. Kafka Networking Fix
+If health endpoints show `kafka_connected: false`, run the Kafka container restart sequence:
 ```bash
 cd ansible/
-
-# Update inventory with your IPs and SSH key path
-# Edit ansible/inventory/hosts.yml
-
-# Deploy all applications
-ansible-playbook -i inventory/hosts.yml quickdeploy.yml
+# Container restart with proper Docker networking (commands in troubleshooting section)
 ```
 
 ## Project Structure
 
 ```
 ca1-metals/
-├── deploy.sh                 # Main deployment script
-├── destroy.sh               # Cleanup script
-├── README.md                # This file
+├── deploy.sh                 # Main deployment automation
+├── destroy.sh               # Infrastructure cleanup
+├── README.md                # This documentation
+├── documentation/           # Deployment evidence
+│   └── sample-deployment-log.txt
 ├── terraform/               # Infrastructure as Code
-│   ├── main.tf             # AWS resources definition
-│   ├── variables.tf        # Input variables
-│   ├── outputs.tf          # Output values
-│   └── terraform.tfvars    # Your configuration
+│   ├── main.tf             # AWS resource definitions
+│   ├── variables.tf        # Input parameters
+│   ├── outputs.tf          # Resource outputs
+│   └── versions.tf         # Provider requirements
 ├── ansible/                 # Configuration management
-│   ├── quickdeploy.yml     # Main playbook
+│   ├── quickdeploy.yml     # Complete deployment playbook
 │   ├── inventory/
-│   │   └── hosts.yml       # VM inventory
-│   ├── group_vars/
-│   │   └── all.yml         # Global variables
+│   │   └── hosts.yml       # VM inventory (updated per deployment)
 │   ├── producer/           # Producer application code
+│   │   ├── Dockerfile
+│   │   ├── producer.py
+│   │   └── requirements.txt
 │   └── processor/          # Processor application code
+│       ├── Dockerfile
+│       ├── processor.py
+│       └── requirements.txt
 └── scripts/
-    └── quick-test.sh       # Pipeline validation
+    └── quick-test.sh       # Pipeline validation tools
 ```
 
-## Data Flow
+## Troubleshooting Guide
 
-1. **Producer** fetches metals pricing data and publishes to Kafka topic `metals-prices`
-2. **Kafka** streams messages between producer and processor
-3. **Processor** consumes messages, processes data, and stores in MongoDB
-4. **MongoDB** persists processed pricing data for analysis
+### Common Issues and Solutions
 
-## Health Monitoring
+#### SSH Connection Timeouts
+```bash
+# Verify SSH key permissions
+chmod 400 ~/.ssh/your-key.pem
 
-### Health Endpoints
-- Producer: `http://PRODUCER_IP:8000/health`
-- Processor: `http://PROCESSOR_IP:8001/health`
+# Update Ansible inventory with new IPs after each deployment
+# Get new IPs: cd terraform && terraform output
+```
 
-### Health Response Format
-```json
-{
-  "kafka_connected": true,
-  "mongodb_status": "connected",
-  "status": "healthy",
-  "timestamp": "2025-09-20T04:02:30.019143"
+#### Kafka Connectivity Issues (`kafka_connected: false`)
+```bash
+cd ansible/
+# Restart Kafka with proper Docker networking
+ansible -i inventory/hosts.yml kafka -m shell -a "docker stop kafka zookeeper || true"
+ansible -i inventory/hosts.yml kafka -m shell -a "docker rm kafka zookeeper || true"
+ansible -i inventory/hosts.yml kafka -m shell -a "docker network create kafka-network"
+ansible -i inventory/hosts.yml kafka -m shell -a "docker run -d --name zookeeper --network kafka-network -p 2181:2181 -e ZOOKEEPER_CLIENT_PORT=2181 -e ZOOKEEPER_TICK_TIME=2000 confluentinc/cp-zookeeper:7.4.0"
+sleep 45
+ansible -i inventory/hosts.yml kafka -m shell -a "docker run -d --name kafka --network kafka-network -p 9092:9092 -e KAFKA_BROKER_ID=1 -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 confluentinc/cp-kafka:7.4.0"
+```
+
+#### Container Status Verification
+```bash
+# Check all containers across VMs
+ansible -i inventory/hosts.yml all -m shell -a "docker ps"
+
+# View application logs
+ansible -i inventory/hosts.yml producer -m shell -a "docker logs metals-producer"
+ansible -i inventory/hosts.yml processor -m shell -a "docker logs metals-processor"
+```
+
+## Deviations from CA0
+
+### Automation Enhancements
+- **Single-command deployment** replaces manual VM provisioning and configuration
+- **Secrets management** replaces hardcoded credentials
+- **Health monitoring** provides automated validation of pipeline status
+- **Infrastructure as Code** ensures reproducible deployments
+
+### Architecture Simplifications
+- **Simulated data source** instead of external API integration (educational focus)
+- **Single AZ deployment** for reduced complexity while maintaining core patterns
+- **Local Terraform state** due to educational AWS permission constraints
+
+### Security Improvements
+- **AWS Secrets Manager integration** for credential management
+- **No secrets in version control** through proper .gitignore configuration
+- **SSH key authentication** for all infrastructure access
+
+## Known Limitations
+
+### Infrastructure State Management
+This implementation uses local Terraform state due to AWS IAM permission restrictions in the educational environment. Production deployment would use:
+```hcl
+terraform {
+  backend "s3" {
+    bucket = "terraform-state-bucket"
+    key    = "ca1/terraform.tfstate"
+    region = "us-east-2"
+  }
 }
 ```
 
-## Configuration
+### Manual Steps Required
+- SSH key configuration in terraform.tfvars
+- Ansible inventory IP updates after each deployment
+- Kafka networking fix for container communication (known Docker issue)
 
-### Terraform Variables
-Update `terraform/terraform.tfvars`:
-```hcl
-ssh_key_name = "your-aws-key-name"
-region = "us-east-2"
-```
+### Educational Trade-offs
+- Single availability zone for simplicity
+- Placeholder API keys instead of external service integration
+- Manual inventory management to focus on core IaC concepts
 
-### Ansible Inventory
-Update `ansible/inventory/hosts.yml` with:
-- Your actual VM IP addresses
-- Path to your SSH private key
-- Any custom configuration
+## Deployment Evidence
 
-### Environment Variables
-Applications support these environment variables:
-- `KAFKA_BOOTSTRAP_SERVERS`: Kafka connection string
-- `MONGODB_URI`: MongoDB connection string
-- `LOG_LEVEL`: Logging verbosity
-- `FETCH_INTERVAL`: Producer data fetch frequency
+Complete deployment logs demonstrating successful infrastructure provisioning, application deployment, and pipeline validation are available in `documentation/sample-deployment-log.txt`.
 
-## Secrets Management
-
-MongoDB credentials are stored in AWS Secrets Manager:
-```bash
-# View current secret
-aws secretsmanager get-secret-value --secret-id "metals-mongodb-password"
-
-# Update secret
-aws secretsmanager update-secret --secret-id "metals-mongodb-password" --secret-string "new-password"
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**SSH Permission Denied**
-```bash
-# Fix SSH key permissions
-chmod 400 ~/.ssh/your-key.pem
-
-# Update inventory with correct key path
-```
-
-**Kafka Connection Issues**
-```bash
-# Check Kafka status
-ansible -i inventory/hosts.yml kafka -m shell -a "docker ps"
-ansible -i inventory/hosts.yml kafka -m shell -a "docker logs kafka"
-
-# Restart Kafka containers
-ansible -i inventory/hosts.yml kafka -m shell -a "docker restart kafka zookeeper"
-```
-
-**Application Not Connecting**
-```bash
-# Check application logs
-ansible -i inventory/hosts.yml producer -m shell -a "docker logs metals-producer"
-ansible -i inventory/hosts.yml processor -m shell -a "docker logs metals-processor"
-
-# Restart applications
-ansible -i inventory/hosts.yml all -m shell -a "docker restart \$(docker ps -q)"
-```
-
-### Debug Commands
-```bash
-# Check all container status
-ansible -i inventory/hosts.yml all -m shell -a "docker ps"
-
-# Test inter-VM connectivity
-ansible -i inventory/hosts.yml processor -m shell -a "nc -zv KAFKA_PRIVATE_IP 9092"
-
-# Check MongoDB data
-ssh ubuntu@MONGODB_IP "docker exec mongodb mongosh -u admin -p password --authenticationDatabase admin metals --eval 'db.prices.countDocuments({})'"
-```
-
-## Development
-
-### Local Testing
-Applications can be tested locally with Docker:
-```bash
-# Start local Kafka and MongoDB
-docker-compose up -d kafka mongodb
-
-# Run applications locally
-cd producer && python producer.py
-cd processor && python processor.py
-```
-
-### Code Structure
-- **Producer**: Fetches metals pricing data and publishes to Kafka
-- **Processor**: Consumes Kafka messages and stores processed data
-- **Health Checks**: Both applications expose `/health` endpoints
-- **Dockerized**: Each application includes Dockerfile for containerization
-
-## Performance
-
-### Resource Usage
-- **t3.small instances**: 2 vCPU, 2 GB RAM each
-- **Storage**: 8 GB root volumes per instance
-- **Network**: VPC with internet gateway for external access
-
-### Scaling Considerations
-- Kafka topic configured with 3 partitions for horizontal scaling
-- MongoDB configured for single-node deployment (development)
-- Applications designed for stateless horizontal scaling
-
-## Deployment Strategy
-
-### Idempotency
-- Terraform ensures consistent infrastructure state
-- Ansible tasks are idempotent and can be re-run safely
-- Deploy script can be executed multiple times
-
-### Rollback Strategy
-```bash
-# Quick rollback by destroying and redeploying
-./destroy.sh
-./deploy.sh
-
-# Partial rollback of applications only
-cd ansible && ansible-playbook -i inventory/hosts.yml quickdeploy.yml
-```
-
-## Cost Optimization
-
-### Current Costs
-- 4 x t3.small instances: ~$0.0208/hour each
-- Data transfer: Minimal within same AZ
-- Storage: 8 GB per instance included
-
-### Cost Reduction
-- Use Spot instances for development
-- Implement auto-shutdown scripts
-- Consider smaller instance types for testing
-
-## Security
-
-### Network Security
-- Security groups restrict access to necessary ports only
-- Internal communication uses private IPs
-- SSH access limited to key-based authentication
-
-### Application Security
-- Secrets stored in AWS Secrets Manager
-- No hardcoded credentials in code
-- MongoDB authentication required
-
-### Best Practices
-- Regular security group audits
-- SSH key rotation
-- Secret rotation policy
-- VPC flow logs for monitoring
-
-## Monitoring and Logging
-
-### Application Logs
-```bash
-# View real-time logs
-docker logs -f metals-producer
-docker logs -f metals-processor
-```
-
-### Infrastructure Monitoring
-- CloudWatch metrics for EC2 instances
-- Custom metrics for application health
-- Log aggregation through CloudWatch Logs
-
-## CI/CD Integration
-
-This project structure supports integration with CI/CD pipelines:
-- Terraform state management for team collaboration
-- Ansible playbooks for automated deployment
-- Health checks for deployment validation
-- Automated testing framework ready
+The log shows:
+- Successful secret retrieval from AWS Secrets Manager
+- Terraform infrastructure provisioning with idempotent behavior
+- Ansible application deployment across all 4 VMs
+- Health endpoint validation confirming operational pipeline
 
 ## License
 

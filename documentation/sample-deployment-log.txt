@@ -1,0 +1,180 @@
+=== DEPLOYING METALS PIPELINE WITH AUTOMATED STATE MANAGEMENT ===
+Using local Terraform state (S3 backend requires additional permissions)...
+Retrieving secrets from AWS Secrets Manager...
+All secrets retrieved successfully
+1. Initializing and deploying infrastructure...
+
+[0m[1mInitializing the backend...[0m
+
+[0m[1mInitializing provider plugins...[0m
+- Reusing previous version of hashicorp/aws from the dependency lock file
+- Using previously-installed hashicorp/aws v6.13.0
+
+[0m[1m[32mTerraform has been successfully initialized![0m[32m[0m
+[0m[32m
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.[0m
+[0m[1maws_vpc.main: Refreshing state... [id=vpc-0cf70d05016bb158b][0m
+[0m[1maws_internet_gateway.main: Refreshing state... [id=igw-01f0e61aae973979f][0m
+[0m[1maws_subnet.main: Refreshing state... [id=subnet-0354370068faab763][0m
+[0m[1maws_security_group.allow_all: Refreshing state... [id=sg-0b104813998fe676b][0m
+[0m[1maws_route_table.main: Refreshing state... [id=rtb-03f06c0b9f0e5cebf][0m
+[0m[1maws_route_table_association.main: Refreshing state... [id=rtbassoc-0eb0863438e5a9e6d][0m
+[0m[1maws_instance.mongodb_vm: Refreshing state... [id=i-02fc96cf9f42ba103][0m
+[0m[1maws_instance.processor_vm: Refreshing state... [id=i-051b0858e8480115c][0m
+[0m[1maws_instance.producer_vm: Refreshing state... [id=i-002de0b3231007a89][0m
+[0m[1maws_instance.kafka_vm: Refreshing state... [id=i-0bd9068b06b0f1189][0m
+
+[0m[1m[32mNo changes.[0m[1m Your infrastructure matches the configuration.[0m
+
+[0mTerraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.
+[0m[1m[32m
+Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+[0m[0m[1m[32m
+Outputs:
+
+[0mkafka_vm_ip = "18.118.26.81"
+kafka_vm_private_ip = "10.0.1.104"
+mongodb_vm_ip = "18.218.222.135"
+mongodb_vm_private_ip = "10.0.1.139"
+processor_vm_ip = "18.224.57.249"
+processor_vm_private_ip = "10.0.1.231"
+producer_vm_ip = "3.144.13.230"
+producer_vm_private_ip = "10.0.1.58"
+2. Deploying applications with secrets...
+
+PLAY [Install Docker everywhere] ***********************************************
+
+TASK [Gathering Facts] *********************************************************
+[WARNING]: Host 'kafka-vm' is using the discovered Python interpreter at '/usr/bin/python3.10', but future installation of another Python interpreter could cause a different interpreter to be discovered. See https://docs.ansible.com/ansible-core/2.19/reference_appendices/interpreter_discovery.html for more information.
+[WARNING]: Host 'processor-vm' is using the discovered Python interpreter at '/usr/bin/python3.10', but future installation of another Python interpreter could cause a different interpreter to be discovered. See https://docs.ansible.com/ansible-core/2.19/reference_appendices/interpreter_discovery.html for more information.
+[WARNING]: Host 'producer-vm' is using the discovered Python interpreter at '/usr/bin/python3.10', but future installation of another Python interpreter could cause a different interpreter to be discovered. See https://docs.ansible.com/ansible-core/2.19/reference_appendices/interpreter_discovery.html for more information.
+[WARNING]: Host 'mongodb-vm' is using the discovered Python interpreter at '/usr/bin/python3.10', but future installation of another Python interpreter could cause a different interpreter to be discovered. See https://docs.ansible.com/ansible-core/2.19/reference_appendices/interpreter_discovery.html for more information.
+ok: [kafka-vm]
+ok: [processor-vm]
+ok: [producer-vm]
+ok: [mongodb-vm]
+
+TASK [Update apt cache] ********************************************************
+changed: [kafka-vm]
+changed: [mongodb-vm]
+changed: [producer-vm]
+changed: [processor-vm]
+
+TASK [Install Docker] **********************************************************
+changed: [mongodb-vm]
+changed: [processor-vm]
+changed: [kafka-vm]
+changed: [producer-vm]
+
+TASK [Start Docker service] ****************************************************
+ok: [processor-vm]
+ok: [mongodb-vm]
+ok: [producer-vm]
+ok: [kafka-vm]
+
+TASK [Add user to docker group] ************************************************
+changed: [kafka-vm]
+changed: [producer-vm]
+changed: [processor-vm]
+changed: [mongodb-vm]
+
+TASK [Reset connection for docker group] ***************************************
+
+TASK [Reset connection for docker group] ***************************************
+
+TASK [Reset connection for docker group] ***************************************
+
+TASK [Reset connection for docker group] ***************************************
+
+PLAY [Deploy Kafka] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [kafka-vm]
+
+TASK [Start Zookeeper container] ***********************************************
+changed: [kafka-vm]
+
+TASK [Wait for Zookeeper to start] *********************************************
+ok: [kafka-vm]
+
+TASK [Start Kafka container] ***************************************************
+changed: [kafka-vm]
+
+TASK [Wait for Kafka to start] *************************************************
+ok: [kafka-vm]
+
+TASK [Create metals-prices topic] **********************************************
+[ERROR]: Task failed: Module failed: non-zero return code
+Origin: /Users/jr.ikamp/Downloads/CA1Stuff/CA1/ansible/quickdeploy.yml:74:7
+
+72         delay: 45
+73     
+74     - name: Create metals-prices topic
+         ^ column 7
+
+fatal: [kafka-vm]: FAILED! => {"changed": true, "cmd": "docker exec kafka kafka-topics --create  --topic metals-prices  --bootstrap-server localhost:9092  --partitions 3  --replication-factor 1\n", "delta": "0:00:42.679162", "end": "2025-09-22 02:49:05.749581", "msg": "non-zero return code", "rc": 137, "start": "2025-09-22 02:48:23.070419", "stderr": "[2025-09-22 02:48:25,808] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:25,930] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:26,038] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:26,241] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:26,745] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:27,450] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:28,658] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:29,567] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:30,774] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:31,882] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:33,091] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:33,996] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:35,003] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:35,909] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:36,915] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:38,021] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:39,229] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:40,134] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:41,341] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:42,447] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:43,453] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:44,559] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:45,766] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:46,772] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:47,777] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:48,984] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:50,191] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:51,096] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:52,001] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:52,906] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:53,913] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:55,120] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:56,126] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:57,131] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:58,136] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:48:59,141] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:49:00,046] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:49:01,152] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:49:02,158] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:49:03,269] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:49:04,181] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)\n[2025-09-22 02:49:05,287] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "stderr_lines": ["[2025-09-22 02:48:25,808] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:25,930] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:26,038] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:26,241] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:26,745] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:27,450] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:28,658] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:29,567] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:30,774] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:31,882] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:33,091] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:33,996] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:35,003] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:35,909] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:36,915] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:38,021] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:39,229] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:40,134] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:41,341] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:42,447] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:43,453] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:44,559] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:45,766] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:46,772] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:47,777] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:48,984] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:50,191] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:51,096] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:52,001] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:52,906] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:53,913] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:55,120] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:56,126] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:57,131] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:58,136] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:48:59,141] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:49:00,046] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:49:01,152] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:49:02,158] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:49:03,269] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:49:04,181] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)", "[2025-09-22 02:49:05,287] WARN [AdminClient clientId=adminclient-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)"], "stdout": "", "stdout_lines": []}
+...ignoring
+
+PLAY [Deploy MongoDB] **********************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [mongodb-vm]
+
+TASK [Start MongoDB container] *************************************************
+changed: [mongodb-vm]
+
+TASK [Wait for MongoDB to start] ***********************************************
+ok: [mongodb-vm]
+
+PLAY [Deploy Processor] ********************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [processor-vm]
+
+TASK [Copy processor code] *****************************************************
+changed: [processor-vm]
+
+TASK [Build processor image] ***************************************************
+changed: [processor-vm]
+
+TASK [Start processor container] ***********************************************
+changed: [processor-vm]
+
+PLAY [Deploy Producer] *********************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [producer-vm]
+
+TASK [Copy producer code] ******************************************************
+changed: [producer-vm]
+
+TASK [Build producer image] ****************************************************
+changed: [producer-vm]
+
+TASK [Start producer container] ************************************************
+changed: [producer-vm]
+
+PLAY RECAP *********************************************************************
+kafka-vm                   : ok=11   changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1   
+mongodb-vm                 : ok=8    changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+processor-vm               : ok=9    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+producer-vm                : ok=9    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+3. Testing deployment...
+Testing health endpoints:
+{"kafka_connected":false,"last_real_fetch":0,"status":"healthy","timestamp":"2025-09-22T02:52:33.230265"}
+Producer healthy
+{"error_count":0,"kafka_connected":false,"last_processed":null,"mongodb_status":"connected","processed_count":0,"status":"unhealthy","timestamp":"2025-09-22T02:52:33.417010"}
+Processor healthy
+
+Deployment complete!
+Health URLs:
+Producer: http://3.144.13.230:8000/health
+Processor: http://18.224.57.249:8001/health

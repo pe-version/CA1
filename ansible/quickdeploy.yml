@@ -94,7 +94,7 @@
           - "27017:27017"
         env:
           MONGO_INITDB_ROOT_USERNAME: admin
-          MONGO_INITDB_ROOT_PASSWORD: password123
+          MONGO_INITDB_ROOT_PASSWORD: "{{ mongodb_password }}"
         volumes:
           - mongodb_data:/data/db
     
@@ -134,7 +134,7 @@
           KAFKA_BOOTSTRAP_SERVERS: "{{ hostvars['kafka-vm']['private_ip'] }}:9092"
           KAFKA_TOPIC: "metals-prices"
           KAFKA_GROUP_ID: "metals-processor-group"
-          MONGODB_URI: "mongodb://admin:password123@{{ hostvars['mongodb-vm']['private_ip'] }}:27017/metals?authSource=admin"
+          MONGODB_URI: "mongodb://admin:{{ mongodb_password }}@{{ hostvars['mongodb-vm']['private_ip'] }}:27017/metals?authSource=admin"
           MONGODB_DATABASE: "metals"
           MONGODB_COLLECTION: "prices"
           LOG_LEVEL: "INFO"
@@ -155,7 +155,7 @@
       docker_image:
         name: metals-producer
         build:
-          path: /home/ubuntu/producer
+          path: /home/ubuntu/processor
         source: build
     
     - name: Start producer container
@@ -169,6 +169,6 @@
         env:
           KAFKA_BOOTSTRAP_SERVERS: "{{ hostvars['kafka-vm']['private_ip'] }}:9092"
           KAFKA_TOPIC: "metals-prices"
-          API_KEY: ""
+          API_KEY: "{{ api_key }}"
           FETCH_INTERVAL: "60"
           LOG_LEVEL: "INFO"

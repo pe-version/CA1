@@ -3,6 +3,7 @@ terraform.tfstate*
 terraform.tfvars
 .terraform/
 *.tfplan
+terraform/backend.tf
 
 # SSH Keys
 *.pem
@@ -13,3 +14,4 @@ ansible/terraform-outputs.json
 # OS files
 .DS_Store
 ./idea
+logs/
