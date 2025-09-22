@@ -270,6 +270,179 @@ The log shows:
 - Ansible application deployment across all 4 VMs
 - Health endpoint validation confirming operational pipeline
 
+## Pipeline Validation
+
+### Quick Validation
+```bash
+# Run automated validation
+bash scripts/quick-test.sh
+```
+
+### Manual Validation Steps
+
+#### 1. Health Endpoint Validation
+```bash
+# Get VM IPs
+cd terraform/
+PRODUCER_IP=$(terraform output -raw producer_vm_ip)
+PROCESSOR_IP=$(terraform output -raw processor_vm_ip)
+
+# Test producer health
+curl -s http://$PRODUCER_IP:8000/health
+```
+**Expected Output:**
+```json
+{
+  "kafka_connected": true,
+  "last_real_fetch": 0,
+  "status": "healthy",
+  "timestamp": "2025-09-20T04:02:29.838836"
+}
+```
+
+```bash
+# Test processor health
+curl -s http://$PROCESSOR_IP:8001/health
+```
+**Expected Output:**
+```json
+{
+  "error_count": 0,
+  "kafka_connected": true,
+  "last_processed": null,
+  "mongodb_status": "connected",
+  "processed_count": 0,
+  "status": "healthy",
+  "timestamp": "2025-09-20T04:02:30.019143"
+}
+```
+
+#### 2. Container Status Validation
+```bash
+cd ansible/
+
+# Check all containers running
+ansible -i inventory/hosts.yml all -m shell -a "docker ps"
+```
+**Expected:** Each VM shows 1-2 containers with "Up" status
+
+```bash
+# Verify specific services
+ansible -i inventory/hosts.yml kafka -m shell -a "docker ps | grep -E '(kafka|zookeeper)'"
+```
+**Expected:** 2 containers (kafka and zookeeper) with "Up" status
+
+```bash
+ansible -i inventory/hosts.yml database -m shell -a "docker ps | grep mongodb"
+```
+**Expected:** 1 container (mongodb) with "Up" status
+
+```bash
+ansible -i inventory/hosts.yml processor -m shell -a "docker ps | grep metals-processor"
+```
+**Expected:** 1 container (metals-processor) with "Up" status
+
+```bash
+ansible -i inventory/hosts.yml producer -m shell -a "docker ps | grep metals-producer"
+```
+**Expected:** 1 container (metals-producer) with "Up" status
+
+#### 3. Data Flow Validation
+```bash
+# Wait for data pipeline to process messages
+sleep 120
+
+# Check Kafka topic has messages
+ansible -i inventory/hosts.yml kafka -m shell -a "docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic metals-prices --from-beginning --max-messages 1 --timeout-ms 5000"
+```
+**Expected:** JSON message with metals pricing data
+
+```bash
+# Check MongoDB has processed documents
+MONGODB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id "metals-mongodb-password" --query SecretString --output text)
+ansible -i inventory/hosts.yml database -m shell -a "docker exec mongodb mongosh -u admin -p '$MONGODB_PASSWORD' --authenticationDatabase admin metals --eval 'db.prices.countDocuments({})' --quiet"
+```
+**Expected:** Number > 0 indicating processed documents
+
+#### 4. End-to-End Smoke Test
+```bash
+# View sample processed data
+ansible -i inventory/hosts.yml database -m shell -a "docker exec mongodb mongosh -u admin -p '$MONGODB_PASSWORD' --authenticationDatabase admin metals --eval 'db.prices.find().limit(1).pretty()' --quiet"
+```
+**Expected:** Document showing processed metals pricing data
+
+### Troubleshooting Validation Failures
+
+#### Issue: Health Endpoints Return "kafka_connected": false
+```bash
+# Check Kafka container logs
+ansible -i inventory/hosts.yml kafka -m shell -a "docker logs kafka | tail -20"
+
+# Check network connectivity
+ansible -i inventory/hosts.yml producer -m shell -a "nc -zv $(terraform output -raw kafka_vm_private_ip) 9092"
+
+# Restart Kafka services
+ansible -i inventory/hosts.yml kafka -m shell -a "docker restart kafka zookeeper"
+```
+
+#### Issue: No Data in MongoDB
+```bash
+# Check processor application logs
+ansible -i inventory/hosts.yml processor -m shell -a "docker logs metals-processor | tail -20"
+
+# Verify MongoDB connectivity from processor
+ansible -i inventory/hosts.yml processor -m shell -a "nc -zv $(terraform output -raw mongodb_vm_private_ip) 27017"
+
+# Check Kafka topic has messages
+ansible -i inventory/hosts.yml kafka -m shell -a "docker exec kafka kafka-topics --describe --topic metals-prices --bootstrap-server localhost:9092"
+```
+
+#### Issue: Container Not Running
+```bash
+# Check exit codes and restart reasons
+ansible -i inventory/hosts.yml all -m shell -a "docker ps -a"
+
+# View container logs for errors
+ansible -i inventory/hosts.yml HOST_GROUP -m shell -a "docker logs CONTAINER_NAME | tail -50"
+
+# Restart specific service
+ansible-playbook -i inventory/hosts.yml quickdeploy.yml --limit HOST_GROUP
+```
+
+#### Issue: Permission or Network Errors
+```bash
+# Check security group rules
+aws ec2 describe-security-groups --group-names metals-sg
+
+# Test SSH connectivity
+ansible -i inventory/hosts.yml all -m ping
+
+# Verify AWS credentials
+aws sts get-caller-identity
+```
+
+### Validation Checklist
+- [ ] All 4 VMs accessible via SSH
+- [ ] All containers running (6 total: kafka, zookeeper, mongodb, processor, producer)
+- [ ] Health endpoints return "healthy" status
+- [ ] Kafka topic "metals-prices" exists and has messages
+- [ ] MongoDB contains processed documents
+- [ ] No error logs in application containers
+
+## Known Limitations
+
+### Terraform State Management
+This implementation uses local Terraform state due to AWS IAM permission restrictions in the educational environment. In a production deployment, the following S3 backend configuration would be recommended:
+```hcl
+terraform {
+  backend "s3" {
+    bucket = "your-terraform-state-bucket"
+    key    = "ca1/terraform.tfstate"
+    region = "us-east-2"
+  }
+}
+```
+
 ## License
 
 This project is for educational purposes as part of CS 5287 coursework.
